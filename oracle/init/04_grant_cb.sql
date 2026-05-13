@@ -1,0 +1,2 @@
+-- SYS または SYSTEM
+GRANT EXECUTE ON dbms_crypt TO CB;

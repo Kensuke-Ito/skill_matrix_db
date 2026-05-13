@@ -1,0 +1,238 @@
+ローカルDB構築手順
+ 
+事前準備
+○ SQL実行は、ここではVS Codeの「SQL Developer」拡張機能使用を想定している
+　　　接続方法・SQL実行方法等はこちらのページなどを参照
+　　　SYSの接続情報は以下の通り。パスワードはOracleインストール時に設定したものを入力
+
+ 
+　　接続後、SYS_connectを右クリック → 「SQLワークシートを開く」 → SQL入力 → 右上の「スクリプトの実行」からSQL実行可能
+　　
+
+ 
+○　SYSのほか、CAA・CSGもスキーマ作成後にコネクション作成しておく
+○ 以下、初回の場合は不要：すでに何度か構築をトライしている場合、スキーマCBとCAA、をクリーンアップしておく。SYSで以下のSQLを実行
+　　※CASCADEでオブジェクトごと削除してくれる
+DROP USER CB CASCADE;
+DROP USER CAA CASCADE;
+DROP USER CSG CASCADE;
+ 
+何をするか？
+要旨：Oracle DBにCB/CAA/CSGのスキーマを作成し、それぞれのテーブルにダンプファイルを取り込んで、テストDBをローカルに構築する
+　CB：他システムを含む社内システム全体のユーザーマスタ・ログイン・パスワード情報等を持つ
+　CAA：システムへのアクセス許可等、権限のマスタを持つ　　※CB/CAAの詳細については\開発環境提供\01_コラボ\02_運用\01_権限設定\ER図\を参照
+　CSG：スキルマトリックス用のデータテーブルを持つ
+ 
+1.　スキーマ作成
+SYSで以下のSQLを実行し、スキーマを作成・DBA権限を付与する。
+CREATE USER CB identified by CB;
+GRANT DBA to CB;
+CREATE USER CAA identified by CAA;
+GRANT DBA to CAA;
+CREATE USER CSG identified by CSG;
+GRANT DBA to CSG;
+ 
+2. CBダンプファイルインポート
+「dmp_再連携ver.zip」をダウンロードし解凍
+※中に入っている「使用方法.txt」は無視する
+コマンドプロンプトでCBダンプファイルがあるディレクトリへ移動し、次のコマンドを実行：
+※Powershell不可！
+imp userid='sys/sysのパスワード@localhost:1521/XEPDB1 as sysdba' file=CB.dmp fromuser=CB touser=CB log=imp_CB.log
+出力されたimp_CB.logをTeams上の[imp_CB_ok.log」とDIFF比較し、一致していればOK
+ 
+3. CBに必要な権限を付与
+次のSQLをSYSで実行
+GRANT EXECUTE ON DBMS_CRYPTO TO CB;
+ 
+4. CAA->CBオブジェクトへの全権限を付与
+以下のSQLをSYSで実行
+※「ORA-04063: view "CB.CBV_NFTMPLT"にエラーがあります。」は無視してOK
+ 
+--- ここから
+ 
+DROP ROLE cb_to_caa_role;
+CREATE ROLE cb_to_caa_role;
+ 
+BEGIN
+  -- テーブル：DML一式（必要なものだけに絞るのが本当は理想）
+  FOR r IN (
+    SELECT owner, table_name AS object_name
+    FROM   all_tables
+    WHERE  owner = 'CB'
+  ) LOOP
+    EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON '||
+                      r.owner||'.'||r.object_name||' TO cb_to_caa_role';
+  END LOOP;
+ 
+  -- ビュー：通常はSELECT（ビュー更新させたいなら INSERT/UPDATE/DELETE も検討）
+  FOR r IN (
+    SELECT owner, view_name AS object_name
+    FROM   all_views
+    WHERE  owner = 'CB'
+  ) LOOP
+    EXECUTE IMMEDIATE 'GRANT SELECT ON '||
+                      r.owner||'.'||r.object_name||' TO cb_to_caa_role';
+  END LOOP;
+ 
+  -- シーケンス：SELECT
+  FOR r IN (
+    SELECT sequence_owner AS owner, sequence_name AS object_name
+    FROM   all_sequences
+    WHERE  sequence_owner = 'CB'
+  ) LOOP
+    EXECUTE IMMEDIATE 'GRANT SELECT ON '||
+                      r.owner||'.'||r.object_name||' TO cb_to_caa_role';
+  END LOOP;
+ 
+  -- プロシージャ/ファンクション/パッケージ：EXECUTE
+  FOR r IN (
+    SELECT owner, object_name
+    FROM   all_objects
+    WHERE  owner = 'CB'
+    AND    object_type IN ('PROCEDURE','FUNCTION','PACKAGE')
+  ) LOOP
+    EXECUTE IMMEDIATE 'GRANT EXECUTE ON '||
+                      r.owner||'.'||r.object_name||' TO cb_to_caa_role';
+  END LOOP;
+END;
+/
+ 
+GRANT cb_to_caa_role TO CAA;
+ 
+-- 型の権限
+GRANT EXECUTE ON CB.CBM_USR_TABLE TO CAA;
+GRANT EXECUTE ON CB.CBV_SECG_TABLE TO CAA;
+GRANT EXECUTE ON CB.CONST TO CAA;
+GRANT SELECT ON CB.CBM_USR TO CAA;
+GRANT SELECT ON CB.CBT_USRATTRINF TO CAA;
+GRANT SELECT ON CB.CBM_AUTH TO CAA;
+GRANT EXECUTE ON CB.CBM_SSKMEM_TABLE TO CAA;
+GRANT SELECT ON CB.CBV_SECG TO CAA;
+GRANT SELECT ON CB.CBM_SSKKSI TO CAA;
+GRANT EXECUTE ON CB.TYPE_CBM_USR TO CAA;
+GRANT EXECUTE ON CB.CBP_SSKKNR_SSK_GET TO CAA;
+GRANT SELECT ON CB.CBM_USRKBN TO CAA;
+GRANT SELECT ON CB.CBM_LGIN TO CAA;
+GRANT SELECT ON CB.CBT_CSTMINF TO CAA;
+GRANT SELECT ON CB.CBT_PRMI TO CAA;
+ 
+--- ここまで
+ 
+5.　CAAダンプファイル取込
+コマンドプロンプトでCAAダンプファイルがあるディレクトリへ移動し、次のコマンドを実行：
+※powershell不可！
+imp userid='sys/sysのパスワード@localhost:1521/XEPDB1 as sysdba' file=CAA.dmp fromuser=CAA touser=CAA log=imp_CAA.log
+出力されたimp_CAA.logをTeams上の「imp_CAA_ok.log」とDIFF比較し、一致していればOK
+ 
+6.　CAA1.sql～CAA3.sql実行
+次のSQLファイルを実行する
+ 
+【CAA1_kawakami_modified.sql】
+・　Teams内の「CAA1_kawakami_modified.sql」を実行する
+※ダンプファイル内の「CAA1.sql」は実行しない
+・　次のエラーは無視してOK
+次のコマンドの開始中にエラーが発生しました : 行 210 -
+CREATE OR REPLACE VIEW SAKU_USR……
+ 
+【CAA2.sql】
+・　「CAA」フォルダ内の「CAA2.sql」を実行する
+・　CAA2.sqlは2回実行する
+・　次のパッケージ関係のエラーは無視してOK
+PACKAGE CAAP0001
+PACKAGE BODY CAAP0001
+PACKAGE LAAP00002
+PACKAGE BODY LAAP00002
+PACKAGE RGP10212
+PACKAGE BODY RGP10212
+PACKAGE BODY CAAP0002
+PACKAGE BODY CAAP0003
+PACKAGE BODY CAP_AUTHLIST_UPDATE
+PACKAGE BODY LAAP00001
+PACKAGE BODY RGP10542A
+PACKAGE BODY SSYSTEM_MENU
+ 
+【CAA3.sql】
+・　「CAA」フォルダ内の「CAA3.sql」を実行する
+ 
+VS CodeでSQLファイルを開き、右上の「スクリプト実行」→接続で「CAA_connect」を選択する
+
+ 
+ 
+7. CSGスキーマに必要な権限を付与する
+以下のSQLをSYSで実行
+ 
+--- ここから
+ 
+-- (DBA か 権限あるユーザーで) ロール作成
+DROP ROLE caa_to_csg_role;
+CREATE ROLE caa_to_csg_role;
+ 
+BEGIN
+  -- テーブル：DML一式（必要なものだけに絞るのが本当は理想）
+  FOR r IN (
+    SELECT owner, table_name AS object_name
+    FROM   all_tables
+    WHERE  owner = 'CAA'
+  ) LOOP
+    EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON '||
+                      r.owner||'.'||r.object_name||' TO caa_to_csg_role';
+  END LOOP;
+ 
+  -- ビュー：通常はSELECT（ビュー更新させたいなら INSERT/UPDATE/DELETE も検討）
+  FOR r IN (
+    SELECT owner, view_name AS object_name
+    FROM   all_views
+    WHERE  owner = 'CAA'
+  ) LOOP
+    EXECUTE IMMEDIATE 'GRANT SELECT ON '||
+                      r.owner||'.'||r.object_name||' TO caa_to_csg_role';
+  END LOOP;
+ 
+  -- シーケンス：SELECT
+  FOR r IN (
+    SELECT sequence_owner AS owner, sequence_name AS object_name
+    FROM   all_sequences
+    WHERE  sequence_owner = 'CAA'
+  ) LOOP
+    EXECUTE IMMEDIATE 'GRANT SELECT ON '||
+                      r.owner||'.'||r.object_name||' TO caa_to_csg_role';
+  END LOOP;
+ 
+  -- プロシージャ/ファンクション/パッケージ：EXECUTE
+  FOR r IN (
+    SELECT owner, object_name
+    FROM   all_objects
+    WHERE  owner = 'CAA'
+    AND    object_type IN ('PROCEDURE','FUNCTION','PACKAGE')
+  ) LOOP
+    EXECUTE IMMEDIATE 'GRANT EXECUTE ON '||
+                      r.owner||'.'||r.object_name||' TO caa_to_csg_role';
+  END LOOP;
+END;
+/
+ 
+GRANT caa_to_csg_role TO CSG;
+ 
+--- ここまで
+ 
+8. CSG＞DB Script内にあるsqlファイルを実行する
+CSGスキーマにて以下の順で実行していく
+　TABLE（フォルダ）
+　　CSG**/CSGM**.sql -> ADD_COLUMN
+　SEQUENCEフォルダ
+　FUNCTIONフォルダ
+　VIEWフォルダ
+　INDEXフォルダ　←これはエラー出る
+　TRIGGERフォルダ　←これもBIN$wrl……だけエラー出る
+　SYNONYMフォルダ
+ 
+9. プログラムを起動する
+別途「ローカル環境構築手順」にしたがい、ログインが可能となっていることを確認する
+※この時点ではまだデータは何も表示されない
+
+ 
+10. CSGデータを取り込む
+「_DATA_sql_developer.sql」をCSGで実行する
+※右側に画面が出た場合「apply」を推す
+再度画面にアクセスし、テストデータが表示されていることを確認する
+

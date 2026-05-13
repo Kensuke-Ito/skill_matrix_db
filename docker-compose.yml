@@ -1,0 +1,19 @@
+services:
+  oracle-xe:
+    image: gvenzl/oracle-xe
+    container_name: oracle-xe
+    platform: linux/amd64
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: oracle
+    volumes:
+      - ./oracle/init:/container-entrypoint-initdb.d
+      - ./oracle/dumps:/dumps
+      - ./oracle/sql:/sql
+
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'select 1 from dual;' | sqlplus -s system/oracle@XE"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
