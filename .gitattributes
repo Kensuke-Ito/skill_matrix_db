@@ -1,0 +1,7 @@
+# Cross-platform safety: scripts must stay LF, otherwise Oracle init scripts fail in container.
+*.sh text eol=lf
+*.sql text eol=lf
+*.SQL text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

@@ -1,10 +1,16 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "Importing CB schema..."
+echo "[init] Importing CB schema from /dumps/cb/cb.dmp"
 
-impdp system/oracle \
-  schemas=CB \
-  directory=DATA_PUMP_DIR \
-  dumpfile=cb/cb.dmp \
-  logfile=cb_import.log
+if [[ ! -f /dumps/cb/cb.dmp ]]; then
+  echo "[init] /dumps/cb/cb.dmp が見つからないため CB import をスキップします"
+  exit 0
+fi
+
+imp \
+  "userid='sys/${ORACLE_PASSWORD}@localhost:1521/XEPDB1 as sysdba'" \
+  file=/dumps/cb/cb.dmp \
+  fromuser=CB \
+  touser=CB \
+  log=/tmp/imp_CB.log

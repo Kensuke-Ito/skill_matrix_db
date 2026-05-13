@@ -1,33 +1,37 @@
-#!/bin/bash
-set +e
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "Executing CSG DB scripts..."
+CSG_ROOT="/sql/csg/DBScript"
 
-sqlplus CSG/********@XE <<EOF
-WHENEVER SQLERROR CONTINUE
+if [[ ! -d "${CSG_ROOT}" ]]; then
+	echo "[init] ${CSG_ROOT} が見つからないため CSGスクリプト実行をスキップします"
+	exit 0
+fi
 
--- TABLE
-@/sql/csg/DBScript/TABLE/CSG**.sql
-@/sql/csg/DBScript/TABLE/CSGM**.sql
-@/sql/csg/DBScript/TABLE/ADD_COLUMN.sql
+echo "[init] Executing CSG DB scripts from ${CSG_ROOT}"
 
--- SEQUENCE
-@/sql/csg/DBScript/SEQUENCE/*.sql
+RUN_FILE=/tmp/run_csg.sql
+{
+	echo "WHENEVER SQLERROR CONTINUE"
+} > "${RUN_FILE}"
 
--- FUNCTION
-@/sql/csg/DBScript/FUNCTION/*.sql
+append_sql_dir() {
+	local dir="$1"
+	if [[ -d "$dir" ]]; then
+		while IFS= read -r file; do
+			echo "@${file}" >> "${RUN_FILE}"
+		done < <(find "$dir" -maxdepth 1 -type f \( -iname '*.sql' \) | sort)
+	fi
+}
 
--- VIEW
-@/sql/csg/DBScript/VIEW/*.sql
+append_sql_dir "${CSG_ROOT}/TABLE"
+append_sql_dir "${CSG_ROOT}/SEQUENCE"
+append_sql_dir "${CSG_ROOT}/FUNCTION"
+append_sql_dir "${CSG_ROOT}/VIEW"
+append_sql_dir "${CSG_ROOT}/INDEX"
+append_sql_dir "${CSG_ROOT}/TRIGGER"
+append_sql_dir "${CSG_ROOT}/SYNONYM"
 
--- INDEX（エラー出る想定）
-@/sql/csg/DBScript/INDEX/*.sql
+echo "EXIT" >> "${RUN_FILE}"
 
--- TRIGGER（BIN$wrl～エラー無視）
-@/sql/csg/DBScript/TRIGGER/*.sql
-
--- SYNONYM
-@/sql/csg/DBScript/SYNONYM/*.sql
-
-EXIT
-EOF
+sqlplus -s "CSG/CSG@//localhost:1521/XEPDB1" @"${RUN_FILE}" || true

@@ -1,19 +1,24 @@
 services:
   oracle-xe:
-    image: gvenzl/oracle-xe
+    image: gvenzl/oracle-xe:21-slim
     container_name: oracle-xe
     platform: linux/amd64
+    restart: unless-stopped
     ports:
       - "1521:1521"
     environment:
       ORACLE_PASSWORD: oracle
     volumes:
-      - ./oracle/init:/container-entrypoint-initdb.d
-      - ./oracle/dumps:/dumps
-      - ./oracle/sql:/sql
+      - oracle-data:/opt/oracle/oradata
+      - ./oracle/init:/container-entrypoint-initdb.d:ro
+      - ./oracle/dumps:/dumps:ro
+      - ./oracle/sql:/sql:ro
 
     healthcheck:
-      test: ["CMD-SHELL", "echo 'select 1 from dual;' | sqlplus -s system/oracle@XE"]
+      test: ["CMD-SHELL", "echo 'select 1 from dual;' | sqlplus -s system/$$ORACLE_PASSWORD@//localhost:1521/XEPDB1 | grep -q 1"]
       interval: 30s
       timeout: 10s
       retries: 20
+
+volumes:
+  oracle-data:

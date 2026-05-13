@@ -1,25 +1,65 @@
-#!/bin/bash
-set +e   # エラーが出ても止めない
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "Executing CAA SQL scripts..."
+echo "[init] Importing CAA schema from /dumps/caa/caa.dmp"
 
-sqlplus system/oracle@XE <<EOF
-WHENEVER SQLERROR CONTINUE
+if [[ -f /dumps/caa/caa.dmp ]]; then
+	imp \
+		"userid='sys/${ORACLE_PASSWORD}@localhost:1521/XEPDB1 as sysdba'" \
+		file=/dumps/caa/caa.dmp \
+		fromuser=CAA \
+		touser=CAA \
+		log=/tmp/imp_CAA.log
+else
+	echo "[init] /dumps/caa/caa.dmp が見つからないため CAA import をスキップします"
+fi
 
--- CAA1.sql
-@/sql/caa/CAA1.sql
--- VIEW作成エラーは無視してOK
+echo "[init] Executing CAA SQL scripts"
 
--- CAA2.sql（1回目）
-@/sql/caa/CAA2.sql
+CAA1_FILE=""
+if [[ -f /sql/caa/CAA1.sql ]]; then
+	CAA1_FILE="/sql/caa/CAA1.sql"
+elif [[ -f /sql/caa/CAA1.SQL ]]; then
+	CAA1_FILE="/sql/caa/CAA1.SQL"
+fi
 
--- CAA2.sql（2回目）
-@/sql/caa/CAA2.sql
--- パッケージ系エラーは無視
--- PACKAGE / PACKAGE BODY エラー想定
+CAA2_FILE=""
+if [[ -f /sql/caa/CAA2.SQL ]]; then
+	CAA2_FILE="/sql/caa/CAA2.SQL"
+elif [[ -f /sql/caa/CAA2.sql ]]; then
+	CAA2_FILE="/sql/caa/CAA2.sql"
+fi
 
--- CAA3.sql
-@/sql/caa/CAA3.sql
+CAA3_FILE=""
+if [[ -f /sql/caa/CAA3.SQL ]]; then
+	CAA3_FILE="/sql/caa/CAA3.SQL"
+elif [[ -f /sql/caa/CAA3.sql ]]; then
+	CAA3_FILE="/sql/caa/CAA3.sql"
+fi
 
-EXIT
-EOF
+RUN_FILE=/tmp/run_caa.sql
+{
+	echo "WHENEVER SQLERROR CONTINUE"
+	if [[ -n "${CAA1_FILE}" ]]; then
+		echo "@${CAA1_FILE}"
+	else
+		echo "PROMPT [warn] CAA1 が見つかりません。"
+	fi
+
+	if [[ -n "${CAA2_FILE}" ]]; then
+		echo "@${CAA2_FILE}"
+		echo "@${CAA2_FILE}"
+	else
+		echo "PROMPT [warn] CAA2 が見つかりません。"
+	fi
+
+	if [[ -n "${CAA3_FILE}" ]]; then
+		echo "@${CAA3_FILE}"
+	else
+		echo "PROMPT [warn] CAA3 が見つかりません。"
+	fi
+
+	echo "EXIT"
+} > "${RUN_FILE}"
+
+sqlplus -s "CAA/CAA@//localhost:1521/XEPDB1" @"${RUN_FILE}" || true
