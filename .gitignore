@@ -1,0 +1,3 @@
+oracle/dumps/**/*.dmp
+oracle/dumps/**/*.zip
+!oracle/dumps/**/.gitkeep

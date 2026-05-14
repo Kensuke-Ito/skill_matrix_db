@@ -42,6 +42,25 @@
 - `docker compose` が利用できること
 - `oracle/dumps/cb/cb.dmp` と `oracle/dumps/caa/caa.dmp` を配置していること
 
+### 2.1 dmp ファイルの取得と配置
+
+`cb.dmp` / `caa.dmp` はリポジトリに含めず、以下の SharePoint から取得してローカルに配置してください。
+
+- 取得元: https://jmasystems.sharepoint.com/:u:/r/sites/msteams_2a7324/Shared%20Documents/20.%E3%82%B9%E3%82%AD%E3%83%AB%E3%83%9E%E3%83%88%E3%83%AA%E3%83%83%E3%82%AF%E3%82%B9/000000_%E5%85%B1%E9%80%9A/%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%ABDB%E6%A7%8B%E7%AF%89%E9%96%A2%E4%BF%82/dmp_%E5%86%8D%E9%80%A3%E6%90%BAver.zip?csf=1&web=1&e=aHEzha
+
+配置先:
+
+- `oracle/dumps/cb/cb.dmp`
+- `oracle/dumps/caa/caa.dmp`
+
+例（zip 展開後に手動配置する場合）:
+
+```bash
+mkdir -p oracle/dumps/cb oracle/dumps/caa
+cp <展開先>/cb.dmp oracle/dumps/cb/cb.dmp
+cp <展開先>/caa.dmp oracle/dumps/caa/caa.dmp
+```
+
 ## 3. 対応OS
 
 ### 3.1 macOS
@@ -191,6 +210,7 @@ docker compose logs oracle-csg-migrate --no-color
 - `oracle-csg-migrate` は手動実行専用です。
 - `oracle/sql/csg/DBScript` と `oracle/sql/csg/data` の両方が未配置の場合、`CSG` スクリプト実行はスキップされます。
 - `INDEX` や `TRIGGER` の既知エラーは `WHENEVER SQLERROR CONTINUE` で処理継続します。
+- `oracle/dumps/**/*.dmp` は Git 管理対象外です。SharePoint から取得してローカル配置してください。
 - シェルスクリプト改行コードは LF 必須です。CRLF だと `/usr/bin/env: 'bash\r': No such file or directory` が発生します。
 - 本リポジトリは [.gitattributes](.gitattributes) で LF 固定です。既存チェックアウトが CRLF の場合は再チェックアウトまたは改行変換を実施してください。
 
