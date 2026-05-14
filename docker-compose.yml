@@ -20,5 +20,49 @@ services:
       timeout: 10s
       retries: 20
 
+  oracle-csg-migrate:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: oracle-csg-migrate
+    platform: linux/amd64
+    depends_on:
+      oracle-xe:
+        condition: service_healthy
+    profiles:
+      - manual
+    restart: "no"
+    environment:
+      ORACLE_PASSWORD: oracle
+    volumes:
+      - ./oracle/sql:/sql:ro
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - |
+        set -euo pipefail;
+        RUN_FILE=/tmp/run_csg_migrations.sql;
+        {
+          echo "WHENEVER SQLERROR CONTINUE";
+        } > "$$RUN_FILE";
+        ADDED_SQL_COUNT=0;
+        for file in /sql/csg/migrations/*.sql /sql/csg/migrations/*.SQL; do
+          if [[ -f "$$file" ]]; then
+            echo "@$$file" >> "$$RUN_FILE";
+            ADDED_SQL_COUNT=$$((ADDED_SQL_COUNT + 1));
+          fi;
+        done;
+        echo "EXIT" >> "$$RUN_FILE";
+        if [[ $$ADDED_SQL_COUNT -eq 0 ]]; then
+          echo "[migrate] no migration files found";
+          exit 0;
+        fi;
+        for i in {1..60}; do
+          if echo "select 'OK' from dual;" | sqlplus -s "sys/$$ORACLE_PASSWORD@//oracle-xe:1521/XEPDB1 as sysdba" | grep -q OK; then
+            break;
+          fi;
+          sleep 5;
+        done;
+        echo "[migrate] apply CSG migration SQLs";
+        sqlplus -s "sys/$$ORACLE_PASSWORD@//oracle-xe:1521/XEPDB1 as sysdba" @"$$RUN_FILE" || true;
+        echo "[migrate] done";
+
 volumes:
   oracle-data:

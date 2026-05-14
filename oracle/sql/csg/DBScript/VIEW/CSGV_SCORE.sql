@@ -1,0 +1,37 @@
+CREATE OR REPLACE VIEW CSGV_SCORE
+    (SYAIN,YEAR,MDL_CD,WRK_CD,BEGIN_SCORE,NOW_SCORE)
+AS
+SELECT 
+    users.SYAIN
+    , users.YEAR
+    , m20.MDL_CD
+    , m20.WRK_CD
+    ,NVL(SUM(CASE WHEN data.INIT > 0 THEN 1 END), 0) AS BEGIN_SCORE
+    ,NVL(SUM(CASE WHEN data.INIT > 0 OR data.RST > 0 THEN 1 END), 0) AS NOW_SCORE
+FROM CSGM20 m20
+LEFT JOIN CSG01 users
+ON m20.LC_CD = users.LC_CD
+AND m20.CLS_CD = users.CLS_CD
+AND m20.MDL_CD = users.MDL_CD
+LEFT OUTER JOIN CSG02 data
+ON data.SKL_CD = m20.SKL_CD
+AND users.SYAIN = data.SYAIN
+AND users.YEAR = data.YEAR
+LEFT OUTER JOIN (
+    SELECT 
+        SKL_CD
+        ,COUNT(*) AS CNT
+    FROM CSGM23
+    GROUP BY SKL_CD
+) m23
+ON m23.SKL_CD = m20.SKL_CD
+
+WHERE 
+    TO_DATE(m20.DYENABLE, 'YYYYMMDD') <= SYSDATE
+    AND m20.DELFLG= '0'
+--(STEP2)…フラグ設定されている(=拠点部署が関連付けされている)スキル項目はレベル計算から除外
+    AND m23.CNT IS NULL
+
+GROUP BY 
+    users.SYAIN, users.YEAR, m20.MDL_CD, m20.WRK_CD
+/

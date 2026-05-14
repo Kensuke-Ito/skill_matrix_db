@@ -1,0 +1,71 @@
+CREATE TABLE CSG.CSG02
+(
+    SYAIN                          VARCHAR2(10) NOT NULL,
+    YEAR                           NUMBER(4,0) NOT NULL,
+    SKL_CD                         NUMBER(12,0) NOT NULL,
+    INIT                           NUMBER(1,0) DEFAULT 0,
+    TGT                            NUMBER(1,0) DEFAULT 0,
+    DYTGT                          VARCHAR2(14),
+    RST                            NUMBER(1,0) DEFAULT 0,
+    DYRST                          VARCHAR2(14),
+    DYSET                          VARCHAR2(14),
+    DYUPD                          VARCHAR2(14),
+    USRSET                         VARCHAR2(10),
+    USRUPD                         VARCHAR2(10),
+    PRGUPD                         VARCHAR2(10),
+    TRNG                           NUMBER(1,0) DEFAULT 0,
+    DYTRNG                         VARCHAR2(14),
+    VRTRNG                         NUMBER(1,0) DEFAULT 0,
+    DYVRTRNG                       VARCHAR2(14),
+    CONSTRAINT CSG02_PRIMARY PRIMARY KEY (SYAIN,YEAR,SKL_CD) USING INDEX
+        PCTFREE 10
+        INITRANS 2
+        MAXTRANS 255
+        TABLESPACE USERS
+        STORAGE(INITIAL 64K NEXT 1M MINEXTENTS 1 MAXEXTENTS 2147483645 BUFFER_POOL DEFAULT)
+        LOGGING
+        ENABLE
+)
+PCTFREE 10
+MAXTRANS 255
+TABLESPACE USERS
+STORAGE(INITIAL 64K NEXT 1M MINEXTENTS 1 MAXEXTENTS 2147483645 BUFFER_POOL DEFAULT)
+NOCACHE
+LOGGING
+/
+COMMENT ON TABLE CSG.CSG02 IS '評価ステータス詳細'
+/
+COMMENT ON COLUMN CSG.CSG02.SYAIN IS '社員番号'
+/
+COMMENT ON COLUMN CSG.CSG02.YEAR IS '年度'
+/
+COMMENT ON COLUMN CSG.CSG02.SKL_CD IS 'スキルコード'
+/
+COMMENT ON COLUMN CSG.CSG02.INIT IS '期初(0:未チェック 1:チェック済)'
+/
+COMMENT ON COLUMN CSG.CSG02.TGT IS '目標(0:未チェック 1:チェック済)'
+/
+COMMENT ON COLUMN CSG.CSG02.DYTGT IS '目標更新日時'
+/
+COMMENT ON COLUMN CSG.CSG02.RST IS '実績(0:未チェック 1:チェック済 2:承認済み)'
+/
+COMMENT ON COLUMN CSG.CSG02.DYRST IS '実績更新日時'
+/
+COMMENT ON COLUMN CSG.CSG02.DYSET IS '登録日時'
+/
+COMMENT ON COLUMN CSG.CSG02.DYUPD IS '更新日時'
+/
+COMMENT ON COLUMN CSG.CSG02.USRSET IS '登録ユーザーID'
+/
+COMMENT ON COLUMN CSG.CSG02.USRUPD IS '更新ユーザーID'
+/
+COMMENT ON COLUMN CSG.CSG02.PRGUPD IS '更新プログラムID'
+/
+COMMENT ON COLUMN CSG.CSG02.TRNG IS 'トレーニング(0:未チェック 1:チェック済)'
+/
+COMMENT ON COLUMN CSG.CSG02.DYTRNG IS 'トレニンーグ日時'
+/
+COMMENT ON COLUMN CSG.CSG02.VRTRNG IS 'VRトレーニング(0:未チェック 1:チェック済 2:承認済み)'
+/
+COMMENT ON COLUMN CSG.CSG02.DYVRTRNG IS 'VRトレーニング日時'
+/

@@ -2,31 +2,62 @@
 
 このディレクトリは、Oracle XE コンテナ上に `CB` / `CAA` / `CSG` を構築するためのセットアップです。
 
-`docker compose up -d` の初回起動時に、`oracle/init` 配下のスクリプトを順番に実行して DB を初期化します。
+初回の `docker compose up -d` では `oracle/init` 配下のスクリプトが順番に実行され、永続ボリュームが空のときだけ DB が初期化されます。既存 DB への差分反映は初期化フローとは分離し、`oracle-csg-migrate` を明示実行する運用です。
 
-## 前提
+## 目次
+
+1. [概要](#1-概要)
+2. [前提](#2-前提)
+3. [対応OS](#3-対応os)
+4. [ディレクトリ構成](#4-ディレクトリ構成)
+5. [運用手順](#5-運用手順)
+6. [DB接続情報](#6-db接続情報)
+7. [注意事項](#7-注意事項)
+8. [よくあるトラブル](#8-よくあるトラブル)
+
+## 1. 概要
+
+この環境でできること:
+
+- `CB` / `CAA` / `CSG` スキーマの初期構築
+- `CB` / `CAA` ダンプの import
+- `CAA` SQL と `CSG` DBScript / テストデータの自動投入
+- `oracle/sql/csg/migrations` 配下の差分 SQL の適用
+
+初回初期化の自動化内容:
+
+1. `CB` / `CAA` / `CSG` ユーザー作成
+2. `CB` ダンプ import
+3. `CB` への `DBMS_CRYPTO` 権限付与
+4. `CAA -> CB` 権限付与
+5. `CAA` ダンプ import
+6. `CAA1/2/3` 実行（`CAA2` は2回）
+7. `CSG` に必要な `CAA` 権限付与
+8. `CSG` DBScript 実行
+9. `CSG` テストデータ SQL 実行
+
+## 2. 前提
 
 - Docker Desktop または Rancher Desktop が起動していること
 - `docker compose` が利用できること
+- `oracle/dumps/cb/cb.dmp` と `oracle/dumps/caa/caa.dmp` を配置していること
 
-## 対応OS
+## 3. 対応OS
 
-- macOS: 対応
-- Windows 10/11: 対応（Docker Desktop + WSL2 backend 推奨）
+### 3.1 macOS
 
-### macOS（Apple Silicon / Intel）
+- Intel Mac はそのまま利用できます。
+- Apple Silicon では [docker-compose.yml](docker-compose.yml) で `linux/amd64` を指定しているため、エミュレーションで動作します。
+- Docker Desktop では Rosetta / x86_64 emulation の有効化を推奨します。
 
-- Intel Mac: そのまま利用可能
-- Apple Silicon (M1/M2/M3): `docker-compose.yml` で `linux/amd64` を指定しているため、エミュレーションで動作
-- Docker Desktop で Rosetta / x86_64 emulation を有効にしておくことを推奨
+### 3.2 Windows
 
-### Windows
+- Windows 10/11 に対応しています。
+- Docker Desktop の WSL2 backend を有効化してください。
+- リポジトリは WSL 側のファイルシステムで扱うことを推奨します。
+- PowerShell / Git Bash / WSL のいずれからでも `docker compose` を実行できます。
 
-- Docker Desktop の WSL2 backend を有効化
-- リポジトリは WSL 側のファイルシステムで扱うことを推奨（I/O が安定しやすい）
-- PowerShell / Git Bash / WSL いずれからでも `docker compose` 実行可
-
-## ディレクトリ構成
+## 4. ディレクトリ構成
 
 ```text
 .
@@ -53,6 +84,10 @@
 		│   ├── CAA2.SQL
 		│   └── CAA3.SQL
 		└── csg/
+			├── migrations/
+			│   └── 01_csg02_add_vr_columns.sql
+			├── data/
+			│   └── 10_csg_test_data.sql
 			└── DBScript/
 				├── TABLE/
 				├── SEQUENCE/
@@ -63,78 +98,146 @@
 				└── SYNONYM/
 ```
 
-## 反映済みフロー
+## 5. 運用手順
 
-`tmp_doc/tmp.md` の「1. スキーマ作成」以降をベースに、以下を自動化済みです。
-
-1. `CB` / `CAA` / `CSG` ユーザー作成
-2. `CB` ダンプ import
-3. `CB` への `DBMS_CRYPTO` 権限付与
-4. `CAA -> CB` 権限付与
-5. `CAA` ダンプ import
-6. `CAA1/2/3` 実行（`CAA2` は2回）
-7. `CSG` に必要な `CAA` 権限付与
-8. `CSG` DBScript 実行（存在する SQL を順次実行）
-
-## 初回起動
+### 5.1 初回初期化
 
 ```bash
 docker compose up -d
 ```
 
-初回は数分かかります。状態確認:
+- 通常の `docker compose up -d` では `oracle-csg-migrate` は起動しません。
+- 初回は 30～60 分かかります。
+
+所要時間の目安:
+
+- Oracle 起動: 5 分程度
+- CB ダンプ import: 20～40 分
+- CAA / CSG 初期化: 5～10 分
+
+状態確認:
 
 ```bash
 docker ps
-docker logs oracle-xe
+docker logs oracle-xe | tail -50
+until docker logs oracle-xe 2>&1 | grep -q 'DATABASE IS READY TO USE'; do echo "Waiting..." && sleep 30; done && echo "DONE"
 ```
 
-Windows でコンテナログを確認する場合も同じです。
+### 5.1.1 通常の起動・停止
 
-## DB接続情報
+初期化完了後の日常的な起動・停止は以下で行います。
+
+**起動:**
+
+```bash
+docker compose up -d
+```
+
+**停止:**
+
+```bash
+docker compose down
+```
+
+**ステータス確認:**
+
+```bash
+docker compose ps
+```
+
+**ログ確認:**
+
+```bash
+docker compose logs oracle-xe
+```
+
+### 5.2 再初期化
+
+永続ボリュームを削除して、初期化を最初からやり直す場合:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+### 5.3 既存DBへの差分適用
+
+既存ボリュームを保持したまま `oracle/sql/csg/migrations` 配下の差分 SQL だけ反映する場合:
+
+```bash
+docker compose --profile manual rm -f oracle-csg-migrate
+docker compose --profile manual up oracle-csg-migrate
+```
+
+ログ確認:
+
+```bash
+docker compose logs oracle-csg-migrate --no-color
+```
+
+- 差分適用 SQL は `SYSDBA` で `XEPDB1` に接続して実行されます。
+- 新しい差分 SQL は `oracle/sql/csg/migrations` 配下へ追加してください。
+
+## 6. DB接続情報
 
 - Host: `localhost`
 - Port: `1521`
 - Service Name: `XEPDB1`
-- SYS password: `docker-compose.yml` の `ORACLE_PASSWORD`
+- SYS password: [docker-compose.yml](docker-compose.yml) の `ORACLE_PASSWORD`
+- Schema users: `CB / CB`, `CAA / CAA`, `CSG / CSG`
 
-スキーマユーザー:
+## 7. 注意事項
 
-- `CB / CB`
-- `CAA / CAA`
-- `CSG / CSG`
+- `oracle-csg-migrate` は手動実行専用です。
+- `oracle/sql/csg/DBScript` と `oracle/sql/csg/data` の両方が未配置の場合、`CSG` スクリプト実行はスキップされます。
+- `INDEX` や `TRIGGER` の既知エラーは `WHENEVER SQLERROR CONTINUE` で処理継続します。
+- シェルスクリプト改行コードは LF 必須です。CRLF だと `/usr/bin/env: 'bash\r': No such file or directory` が発生します。
+- 本リポジトリは [.gitattributes](.gitattributes) で LF 固定です。既存チェックアウトが CRLF の場合は再チェックアウトまたは改行変換を実施してください。
 
-## 再初期化
+## 8. よくあるトラブル
 
-初期化スクリプトは永続ボリュームが空のときだけ実行されます。
+### 8.1 初回初期化が長時間かかる
 
-DDL/初期化処理を再実行したい場合:
+予期された動作です。CB ダンプ import が最も時間を要します。
+
+確認コマンド:
+
+```bash
+docker logs oracle-xe | tail -20
+docker logs oracle-xe 2>&1 | grep 'CONTAINER: DONE\|DATABASE IS READY'
+```
+
+### 8.2 Apple Silicon で起動が遅い
+
+- `linux/amd64` エミュレーションのため、初回初期化はさらに遅くなる場合があります。
+- エミュレーション環境ではディスク I/O がボトルネックになりやすいです。
+
+### 8.3 Windows で初期化スクリプトが失敗する
+
+- 改行コードが CRLF になっていないか確認してください。
+- 失敗状態が残っている場合は再初期化してください。
 
 ```bash
 docker compose down -v
 docker compose up -d
 ```
 
-## 注意事項
+### 8.4 スキーマはあるがテーブルが無い
 
-- 手順書上の `CAA1_kawakami_modified.sql` は、内容を反映した正式ファイル名 `CAA1.sql` として配置してください。
-- `oracle/sql/csg/DBScript` が未配置の場合、`CSG` スクリプト実行はスキップされます。
-- `INDEX` や `TRIGGER` の既知エラーは `WHENEVER SQLERROR CONTINUE` で処理継続します。
-- シェルスクリプト改行コードは LF 必須です。CRLF だと初期化で `/usr/bin/env: 'bash\r': No such file or directory` が発生します。
-- 本リポジトリは [.gitattributes](.gitattributes) で LF 固定しています。既存チェックアウトが CRLF の場合は再チェックアウトまたは改行変換を実施してください。
-
-## よくあるトラブル
-
-### Apple Silicon で起動が遅い
-
-- `linux/amd64` エミュレーションのため初回起動は時間がかかります。
-
-### Windows で初期化スクリプトが失敗する
-
-- 改行コードを確認（CRLF になっていないか）
-- `docker compose down -v` 後に再起動
+- `docker logs oracle-xe` に `ORA-01950` や `ORA-01045` が出ていないか確認してください。
+- 本リポジトリでは [oracle/init/02_grant_privileges.sql](oracle/init/02_grant_privileges.sql) で対策済みです。
+- 既存ボリュームに失敗状態が残っている場合は再初期化してください。
 
 ```bash
 docker compose down -v
 docker compose up -d
+docker logs oracle-xe
+```
+
+### 8.5 既存DBへ差分だけ反映したい
+
+```bash
+docker compose --profile manual rm -f oracle-csg-migrate
+docker compose --profile manual up oracle-csg-migrate
+docker compose logs oracle-csg-migrate --no-color
 ```

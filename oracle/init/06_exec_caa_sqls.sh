@@ -10,6 +10,15 @@ if [[ -f /dumps/caa/caa.dmp ]]; then
 		fromuser=CAA \
 		touser=CAA \
 		log=/tmp/imp_CAA.log
+
+	# imp がユーザー定義を上書きして権限を消去する場合に備え、再付与
+	sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<SQL_EOF || true
+ALTER USER CAA DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP;
+ALTER USER CAA QUOTA UNLIMITED ON USERS;
+GRANT DBA TO CAA;
+GRANT CREATE SESSION TO CAA;
+EXIT
+SQL_EOF
 else
 	echo "[init] /dumps/caa/caa.dmp が見つからないため CAA import をスキップします"
 fi
