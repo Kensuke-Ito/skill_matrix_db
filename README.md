@@ -29,27 +29,34 @@
 1. `CB` / `CAA` / `CSG` ユーザー作成
 2. `CB` ダンプ import
 3. `CB` への `DBMS_CRYPTO` 権限付与
-4. `CAA -> CB` 権限付与
+4. `CAA -> CB` 権限付与（1回目）
 5. `CAA` ダンプ import
 6. `CAA1/2/3` 実行（`CAA2` は2回）
-7. `CSG` に必要な `CAA` 権限付与
-8. `CSG` DBScript 実行
-9. `CSG` テストデータ SQL 実行
+7. `CAA -> CB` 権限再付与（2回目）
+8. `CAA` 依存オブジェクト再コンパイル（`CBV_USRINF`, `CBV_USRINF2`, `CAP_AUTH_GET`）
+9. `CSG` に必要な `CAA` 権限付与
+10. `CSG` DBScript 実行
+11. `CSG` テストデータ SQL 実行
 
 ## 2. 前提
 
 - Docker Desktop または Rancher Desktop が起動していること
 - `docker compose` が利用できること
-- `oracle/dumps/cb/cb.dmp` と `oracle/dumps/caa/caa.dmp` を配置していること
+- dump ファイルは次のいずれかを配置していること
+	- Data Pump 共有 dump: `oracle/dumps/cb/EXPORT_SCHEMA.DMP`
+	- CAA 専用 Data Pump dump: `oracle/dumps/caa/EXPORT_SCHEMA.DMP`
+	- legacy dump: `oracle/dumps/cb/cb.dmp` と `oracle/dumps/caa/caa.dmp`
 
 ### 2.1 dmp ファイルの取得と配置
 
-`cb.dmp` / `caa.dmp` はリポジトリに含めず、以下の SharePoint から取得してローカルに配置してください。
+`cb.dmp` / `caa.dmp` / `EXPORT_SCHEMA.DMP` はリポジトリに含めず、以下の SharePoint から取得してローカルに配置してください。
 
 - 取得元: https://jmasystems.sharepoint.com/:u:/r/sites/msteams_2a7324/Shared%20Documents/20.%E3%82%B9%E3%82%AD%E3%83%AB%E3%83%9E%E3%83%88%E3%83%AA%E3%83%83%E3%82%AF%E3%82%B9/000000_%E5%85%B1%E9%80%9A/%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%ABDB%E6%A7%8B%E7%AF%89%E9%96%A2%E4%BF%82/dmp_%E5%86%8D%E9%80%A3%E6%90%BAver.zip?csf=1&web=1&e=aHEzha
 
 配置先:
 
+- `oracle/dumps/cb/EXPORT_SCHEMA.DMP`（共有 dump の場合）
+- `oracle/dumps/caa/EXPORT_SCHEMA.DMP`（CAA 専用 Data Pump dump を分離する場合）
 - `oracle/dumps/cb/cb.dmp`
 - `oracle/dumps/caa/caa.dmp`
 
@@ -57,6 +64,10 @@
 
 ```bash
 mkdir -p oracle/dumps/cb oracle/dumps/caa
+# 共有 Data Pump dump を使う場合
+cp <展開先>/EXPORT_SCHEMA.DMP oracle/dumps/cb/EXPORT_SCHEMA.DMP
+
+# legacy dump を使う場合
 cp <展開先>/cb.dmp oracle/dumps/cb/cb.dmp
 cp <展開先>/caa.dmp oracle/dumps/caa/caa.dmp
 ```
@@ -85,8 +96,10 @@ cp <展開先>/caa.dmp oracle/dumps/caa/caa.dmp
 └── oracle/
 	├── dumps/
 	│   ├── cb/
+	│   │   ├── EXPORT_SCHEMA.DMP
 	│   │   └── cb.dmp
 	│   └── caa/
+	│       ├── EXPORT_SCHEMA.DMP
 	│       └── caa.dmp
 	├── init/
 	│   ├── 01_create_users.sql

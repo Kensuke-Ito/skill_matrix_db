@@ -1,9 +1,51 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[init] Importing CAA schema from /dumps/caa/caa.dmp"
+echo "[init] Importing CAA schema"
 
-if [[ -f /dumps/caa/caa.dmp ]]; then
+if [[ -f /dumps/caa/EXPORT_SCHEMA.DMP ]]; then
+	echo "[init] Data Pump dump detected for CAA import: /dumps/caa/EXPORT_SCHEMA.DMP"
+
+	sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<SQL_EOF
+CREATE OR REPLACE DIRECTORY DPDIR_CAA AS '/dumps/caa';
+CREATE OR REPLACE DIRECTORY DPDIR_TMP AS '/tmp';
+GRANT READ ON DIRECTORY DPDIR_CAA TO SYSTEM;
+GRANT READ, WRITE ON DIRECTORY DPDIR_TMP TO SYSTEM;
+SQL_EOF
+
+	impdp \
+		"system/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1" \
+		directory=DPDIR_CAA \
+		dumpfile=EXPORT_SCHEMA.DMP \
+		schemas=CAA \
+		exclude=OBJECT_GRANT \
+		exclude=ROLE_GRANT \
+		exclude=SYSTEM_GRANT \
+		logfile=DPDIR_TMP:impdp_CAA.log \
+		metrics=y || true
+elif [[ -f /dumps/cb/EXPORT_SCHEMA.DMP ]]; then
+	echo "[init] Data Pump dump detected for CAA import (shared dump): /dumps/cb/EXPORT_SCHEMA.DMP"
+
+	sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<SQL_EOF
+CREATE OR REPLACE DIRECTORY DPDIR_CB AS '/dumps/cb';
+CREATE OR REPLACE DIRECTORY DPDIR_TMP AS '/tmp';
+GRANT READ ON DIRECTORY DPDIR_CB TO SYSTEM;
+GRANT READ, WRITE ON DIRECTORY DPDIR_TMP TO SYSTEM;
+SQL_EOF
+
+	impdp \
+		"system/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1" \
+		directory=DPDIR_CB \
+		dumpfile=EXPORT_SCHEMA.DMP \
+		schemas=CAA \
+		exclude=OBJECT_GRANT \
+		exclude=ROLE_GRANT \
+		exclude=SYSTEM_GRANT \
+		logfile=DPDIR_TMP:impdp_CAA.log \
+		metrics=y || true
+elif [[ -f /dumps/caa/caa.dmp ]]; then
+	echo "[init] legacy imp dump detected for CAA import: /dumps/caa/caa.dmp"
+
 	imp \
 		"userid='sys/${ORACLE_PASSWORD}@localhost:1521/XEPDB1 as sysdba'" \
 		file=/dumps/caa/caa.dmp \
@@ -20,7 +62,7 @@ GRANT CREATE SESSION TO CAA;
 EXIT
 SQL_EOF
 else
-	echo "[init] /dumps/caa/caa.dmp が見つからないため CAA import をスキップします"
+	echo "[init] /dumps/caa/EXPORT_SCHEMA.DMP, /dumps/cb/EXPORT_SCHEMA.DMP, /dumps/caa/caa.dmp が見つからないため CAA import をスキップします"
 fi
 
 echo "[init] Executing CAA SQL scripts"
@@ -72,3 +114,14 @@ RUN_FILE=/tmp/run_caa.sql
 } > "${RUN_FILE}"
 
 sqlplus -s "CAA/CAA@//localhost:1521/XEPDB1" @"${RUN_FILE}" || true
+
+echo "[init] Reconcile CAA grants from CB after CAA import"
+sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" @/container-entrypoint-initdb.d/05_exec_caa_to_cb.sql || true
+
+echo "[init] Compile CAA dependent objects"
+sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<'SQL_COMPILE_CAA' || true
+ALTER VIEW CAA.CBV_USRINF COMPILE;
+ALTER VIEW CAA.CBV_USRINF2 COMPILE;
+ALTER PACKAGE CAA.CAP_AUTH_GET COMPILE BODY;
+EXIT
+SQL_COMPILE_CAA
