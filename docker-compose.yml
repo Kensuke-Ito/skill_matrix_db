@@ -8,6 +8,9 @@ services:
       - "1521:1521"
     environment:
       ORACLE_PASSWORD: oracle
+      ORACLE_HOST: localhost
+      ORACLE_PORT: "1521"
+      ORACLE_SERVICE: XEPDB1
     volumes:
       - oracle-data:/opt/oracle/oradata
       - ./oracle/init:/container-entrypoint-initdb.d:ro
@@ -15,7 +18,7 @@ services:
       - ./oracle/sql:/sql:ro
 
     healthcheck:
-      test: ["CMD-SHELL", "echo 'select 1 from dual;' | sqlplus -s system/$$ORACLE_PASSWORD@//localhost:1521/XEPDB1 | grep -q 1"]
+      test: ["CMD-SHELL", "echo 'select 1 from dual;' | sqlplus -s system/$$ORACLE_PASSWORD@//$$ORACLE_HOST:$$ORACLE_PORT/$$ORACLE_SERVICE | grep -q 1"]
       interval: 30s
       timeout: 10s
       retries: 20
@@ -32,6 +35,9 @@ services:
     restart: "no"
     environment:
       ORACLE_PASSWORD: oracle
+      ORACLE_HOST: oracle-xe
+      ORACLE_PORT: "1521"
+      ORACLE_SERVICE: XEPDB1
     volumes:
       - ./oracle/sql:/sql:ro
     entrypoint: ["/bin/bash", "-lc"]
@@ -55,13 +61,13 @@ services:
           exit 0;
         fi;
         for i in {1..60}; do
-          if echo "select 'OK' from dual;" | sqlplus -s "sys/$$ORACLE_PASSWORD@//oracle-xe:1521/XEPDB1 as sysdba" | grep -q OK; then
+          if echo "select 'OK' from dual;" | sqlplus -s "sys/$$ORACLE_PASSWORD@//$$ORACLE_HOST:$$ORACLE_PORT/$$ORACLE_SERVICE as sysdba" | grep -q OK; then
             break;
           fi;
           sleep 5;
         done;
         echo "[migrate] apply CSG migration SQLs";
-        sqlplus -s "sys/$$ORACLE_PASSWORD@//oracle-xe:1521/XEPDB1 as sysdba" @"$$RUN_FILE" || true;
+        sqlplus -s "sys/$$ORACLE_PASSWORD@//$$ORACLE_HOST:$$ORACLE_PORT/$$ORACLE_SERVICE as sysdba" @"$$RUN_FILE" || true;
         echo "[migrate] done";
 
 volumes:

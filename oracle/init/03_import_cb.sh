@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ORACLE_HOST="${ORACLE_HOST:-localhost}"
+ORACLE_PORT="${ORACLE_PORT:-1521}"
+ORACLE_SERVICE="${ORACLE_SERVICE:-XEPDB1}"
+
+SYSDBA_CONN="sys/${ORACLE_PASSWORD}@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba"
+SYSTEM_CONN="system/${ORACLE_PASSWORD}@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE}"
+IMP_SYSDBA_CONN="userid='sys/${ORACLE_PASSWORD}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba'"
+
 echo "[init] Importing CB schema from /dumps/cb/cb.dmp"
 
 if [[ -f /dumps/cb/EXPORT_SCHEMA.DMP ]]; then
   echo "[init] Data Pump dump detected: /dumps/cb/EXPORT_SCHEMA.DMP"
 
-  sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<'SQL_EOF'
+  sqlplus -s "${SYSDBA_CONN}" <<'SQL_EOF'
 CREATE OR REPLACE DIRECTORY DPDIR_CB AS '/dumps/cb';
 CREATE OR REPLACE DIRECTORY DPDIR_TMP AS '/tmp';
 GRANT READ ON DIRECTORY DPDIR_CB TO SYSTEM;
@@ -14,7 +22,7 @@ GRANT READ, WRITE ON DIRECTORY DPDIR_TMP TO SYSTEM;
 SQL_EOF
 
   impdp \
-    "system/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1" \
+    "${SYSTEM_CONN}" \
     directory=DPDIR_CB \
     dumpfile=EXPORT_SCHEMA.DMP \
     schemas=CB \
@@ -25,7 +33,7 @@ SQL_EOF
     metrics=y || true
 
   # Data Pump can finish with non-zero when optional grants fail. Guard with required-object existence.
-  has_pkg_body=$(sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<'SQL_EOF'
+  has_pkg_body=$(sqlplus -s "${SYSDBA_CONN}" <<'SQL_EOF'
 set heading off feedback off pages 0 verify off
 select count(*) from dba_objects
  where owner='CB' and object_name='CBP_PRMI_ACS_GET' and object_type='PACKAGE BODY';
@@ -40,7 +48,7 @@ SQL_EOF
   fi
 elif [[ -f /dumps/cb/cb.dmp ]]; then
   if ! imp \
-    "userid='sys/${ORACLE_PASSWORD}@localhost:1521/XEPDB1 as sysdba'" \
+    "${IMP_SYSDBA_CONN}" \
     file=/dumps/cb/cb.dmp \
     fromuser=CB \
     touser=CB \
@@ -60,7 +68,7 @@ else
   exit 0
 fi
 
-sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<'SQL_EOF' || true
+sqlplus -s "${SYSDBA_CONN}" <<'SQL_EOF' || true
 ALTER USER CB DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP;
 ALTER USER CB QUOTA UNLIMITED ON USERS;
 GRANT CREATE SESSION TO CB;

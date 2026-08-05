@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ORACLE_HOST="${ORACLE_HOST:-localhost}"
+ORACLE_PORT="${ORACLE_PORT:-1521}"
+ORACLE_SERVICE="${ORACLE_SERVICE:-XEPDB1}"
+
+SYSDBA_CONN="sys/${ORACLE_PASSWORD}@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba"
+CSG_CONN="CSG/CSG@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE}"
+
 CSG_ROOT="/sql/csg/DBScript"
 CSG_DATA_ROOT="/sql/csg/data"
 
@@ -64,7 +71,7 @@ fi
 echo "EXIT" >> "${RUN_FILE}"
 
 # 08_exec_csg_scripts.sh の実行前に SYS で CSG の基本権限を保証
-sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<SQL_ENSURE_CSG || true
+sqlplus -s "${SYSDBA_CONN}" <<SQL_ENSURE_CSG || true
 ALTER USER CSG DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP;
 ALTER USER CSG QUOTA UNLIMITED ON USERS;
 GRANT CREATE SESSION TO CSG;
@@ -73,4 +80,4 @@ EXIT
 SQL_ENSURE_CSG
 
 # CSG スクリプト実行
-sqlplus -s "CSG/CSG@//localhost:1521/XEPDB1" @"${RUN_FILE}" || true
+sqlplus -s "${CSG_CONN}" @"${RUN_FILE}" || true

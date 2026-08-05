@@ -76,16 +76,41 @@ cp <展開先>/caa.dmp oracle/dumps/caa/caa.dmp
 
 ### 3.1 macOS
 
-- Intel Mac はそのまま利用できます。
-- Apple Silicon では [docker-compose.yml](docker-compose.yml) で `linux/amd64` を指定しているため、エミュレーションで動作します。
-- Docker Desktop では Rosetta / x86_64 emulation の有効化を推奨します。
+- Intel Mac:
+	- Docker Desktop でそのまま `docker compose` を実行できます。
+- Apple Silicon (M1/M2/M3):
+	- `gvenzl/oracle-xe:21-slim` を安定実行するため、x86_64 ランタイムとして Colima を必須とします。
+	- Docker Desktop の Rosetta / x86_64 emulation では `ORA-00443: background process "PMON" did not start` が発生し、初期化が完了しない場合があります。
+
+Apple Silicon セットアップ手順（初回のみ）:
+
+```bash
+brew install colima docker docker-compose
+colima start --arch x86_64 --cpu 4 --memory 8 --disk 100
+docker context use colima
+docker context ls
+```
+
+Apple Silicon の日常起動手順:
+
+```bash
+colima start
+docker context use colima
+docker compose up -d
+```
 
 ### 3.2 Windows
 
-- Windows 10/11 に対応しています。
+- Windows 10/11 (x86_64 + WSL2 backend) に対応しています。
 - Docker Desktop の WSL2 backend を有効化してください。
 - リポジトリは WSL 側のファイルシステムで扱うことを推奨します。
 - PowerShell / Git Bash / WSL のいずれからでも `docker compose` を実行できます。
+
+Windows の推奨起動例（PowerShell）:
+
+```powershell
+docker compose up -d
+```
 
 ## 4. ディレクトリ構成
 
@@ -137,6 +162,8 @@ cp <展開先>/caa.dmp oracle/dumps/caa/caa.dmp
 ```bash
 docker compose up -d
 ```
+
+- Apple Silicon では事前に `colima start --arch x86_64` を実行し、`docker context use colima` で Colima コンテキストを選択してください。
 
 - 通常の `docker compose up -d` では `oracle-csg-migrate` は起動しません。
 - 初回は 30～60 分かかります。
@@ -192,6 +219,15 @@ docker compose down -v
 docker compose up -d
 ```
 
+Apple Silicon の再初期化時:
+
+```bash
+colima start
+docker context use colima
+docker compose down -v
+docker compose up -d
+```
+
 ### 5.3 既存DBへの差分適用
 
 既存ボリュームを保持したまま `oracle/sql/csg/migrations` 配下の差分 SQL だけ反映する場合:
@@ -240,10 +276,23 @@ docker logs oracle-xe | tail -20
 docker logs oracle-xe 2>&1 | grep 'CONTAINER: DONE\|DATABASE IS READY'
 ```
 
-### 8.2 Apple Silicon で起動が遅い
+### 8.2 Apple Silicon で DB 初期化が完了しない
 
-- `linux/amd64` エミュレーションのため、初回初期化はさらに遅くなる場合があります。
-- エミュレーション環境ではディスク I/O がボトルネックになりやすいです。
+症状:
+
+- `docker compose up -d` 後に `oracle-xe` が再起動ループする
+- `docker logs oracle-xe` に `ORA-00443: background process "PMON" did not start` が出力される
+
+対応:
+
+- Colima を x86_64 で起動し、Docker コンテキストを Colima に切り替えて再実行してください。
+
+```bash
+colima start --arch x86_64 --cpu 4 --memory 8 --disk 100
+docker context use colima
+docker compose down -v
+docker compose up -d
+```
 
 ### 8.3 Windows で初期化スクリプトが失敗する
 

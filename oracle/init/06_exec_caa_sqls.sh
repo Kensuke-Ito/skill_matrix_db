@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ORACLE_HOST="${ORACLE_HOST:-localhost}"
+ORACLE_PORT="${ORACLE_PORT:-1521}"
+ORACLE_SERVICE="${ORACLE_SERVICE:-XEPDB1}"
+
+SYSDBA_CONN="sys/${ORACLE_PASSWORD}@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba"
+SYSTEM_CONN="system/${ORACLE_PASSWORD}@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE}"
+CAA_CONN="CAA/CAA@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE}"
+IMP_SYSDBA_CONN="userid='sys/${ORACLE_PASSWORD}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba'"
+
 echo "[init] Importing CAA schema"
 
 if [[ -f /dumps/caa/EXPORT_SCHEMA.DMP ]]; then
 	echo "[init] Data Pump dump detected for CAA import: /dumps/caa/EXPORT_SCHEMA.DMP"
 
-	sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<SQL_EOF
+	sqlplus -s "${SYSDBA_CONN}" <<SQL_EOF
 CREATE OR REPLACE DIRECTORY DPDIR_CAA AS '/dumps/caa';
 CREATE OR REPLACE DIRECTORY DPDIR_TMP AS '/tmp';
 GRANT READ ON DIRECTORY DPDIR_CAA TO SYSTEM;
@@ -14,7 +23,7 @@ GRANT READ, WRITE ON DIRECTORY DPDIR_TMP TO SYSTEM;
 SQL_EOF
 
 	impdp \
-		"system/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1" \
+		"${SYSTEM_CONN}" \
 		directory=DPDIR_CAA \
 		dumpfile=EXPORT_SCHEMA.DMP \
 		schemas=CAA \
@@ -26,7 +35,7 @@ SQL_EOF
 elif [[ -f /dumps/cb/EXPORT_SCHEMA.DMP ]]; then
 	echo "[init] Data Pump dump detected for CAA import (shared dump): /dumps/cb/EXPORT_SCHEMA.DMP"
 
-	sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<SQL_EOF
+	sqlplus -s "${SYSDBA_CONN}" <<SQL_EOF
 CREATE OR REPLACE DIRECTORY DPDIR_CB AS '/dumps/cb';
 CREATE OR REPLACE DIRECTORY DPDIR_TMP AS '/tmp';
 GRANT READ ON DIRECTORY DPDIR_CB TO SYSTEM;
@@ -34,7 +43,7 @@ GRANT READ, WRITE ON DIRECTORY DPDIR_TMP TO SYSTEM;
 SQL_EOF
 
 	impdp \
-		"system/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1" \
+		"${SYSTEM_CONN}" \
 		directory=DPDIR_CB \
 		dumpfile=EXPORT_SCHEMA.DMP \
 		schemas=CAA \
@@ -47,14 +56,14 @@ elif [[ -f /dumps/caa/caa.dmp ]]; then
 	echo "[init] legacy imp dump detected for CAA import: /dumps/caa/caa.dmp"
 
 	imp \
-		"userid='sys/${ORACLE_PASSWORD}@localhost:1521/XEPDB1 as sysdba'" \
+		"${IMP_SYSDBA_CONN}" \
 		file=/dumps/caa/caa.dmp \
 		fromuser=CAA \
 		touser=CAA \
 		log=/tmp/imp_CAA.log
 
 	# imp がユーザー定義を上書きして権限を消去する場合に備え、再付与
-	sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<SQL_EOF || true
+	sqlplus -s "${SYSDBA_CONN}" <<SQL_EOF || true
 ALTER USER CAA DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP;
 ALTER USER CAA QUOTA UNLIMITED ON USERS;
 GRANT DBA TO CAA;
@@ -113,13 +122,13 @@ RUN_FILE=/tmp/run_caa.sql
 	echo "EXIT"
 } > "${RUN_FILE}"
 
-sqlplus -s "CAA/CAA@//localhost:1521/XEPDB1" @"${RUN_FILE}" || true
+sqlplus -s "${CAA_CONN}" @"${RUN_FILE}" || true
 
 echo "[init] Reconcile CAA grants from CB after CAA import"
-sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" @/container-entrypoint-initdb.d/05_exec_caa_to_cb.sql || true
+sqlplus -s "${SYSDBA_CONN}" @/container-entrypoint-initdb.d/05_exec_caa_to_cb.sql || true
 
 echo "[init] Compile CAA dependent objects"
-sqlplus -s "sys/${ORACLE_PASSWORD}@//localhost:1521/XEPDB1 as sysdba" <<'SQL_COMPILE_CAA' || true
+sqlplus -s "${SYSDBA_CONN}" <<'SQL_COMPILE_CAA' || true
 ALTER VIEW CAA.CBV_USRINF COMPILE;
 ALTER VIEW CAA.CBV_USRINF2 COMPILE;
 ALTER PACKAGE CAA.CAP_AUTH_GET COMPILE BODY;
